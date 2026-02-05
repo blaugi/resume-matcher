@@ -1,0 +1,23 @@
+Position: Software Engineer
+Company: Innovatech Solutions
+Location: Remote / Hybrid Option Available
+Salary: €65,000 - €85,000 per annum, based on experience
+Start Date: Flexible
+
+Job Description
+We are looking for a Software Engineer to join our dynamic team at Innovatech Solutions. In this role, you will collaborate with cross-functional teams to design, develop, and implement robust software solutions that improve user experience and drive company goals.
+
+Key Responsibilities
+Design, develop, and maintain web applications using modern frameworks like React and Node.js.
+Troubleshoot and optimize performance issues across the tech stack.
+Collaborate with UX/UI designers to build intuitive and engaging user interfaces.
+Participate in code reviews and contribute to team knowledge sharing.
+Qualifications
+Education: Bachelor’s degree in Computer Science or related field.
+Experience: 3+ years in software development, particularly with JavaScript frameworks.
+Skills: Proficiency in RESTful APIs, SQL databases, and version control (Git).
+Benefits
+Competitive salary and performance-based bonuses.
+Flexible working hours and remote work options.
+Health insurance, retirement plans, and paid time off.
+Professional development opportunities including training and certifications.
