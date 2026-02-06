@@ -5,6 +5,12 @@ from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+from langchain.chat_models import init_chat_model
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# model = init_chat_model("google_genai:gemini-2.5-flash-lite")
 
 FILE_PATH = "data/test.pdf"
 
@@ -22,10 +28,14 @@ resume_text = docling.load()
 
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 semantic_splitter = SemanticChunker(embeddings, breakpoint_threshold_type="percentile")
-semantic_splitter = SemanticChunker(embeddings, breakpoint_threshold_type="percentile", breakpoint_threshold_amount=50)
+semantic_splitter = SemanticChunker(
+    embeddings, breakpoint_threshold_type="percentile", breakpoint_threshold_amount=50
+)
 resume_chunks = semantic_splitter.split_documents(resume_text)
 
-semantic_splitter = SemanticChunker(embeddings, breakpoint_threshold_type="percentile", breakpoint_threshold_amount=50)
+semantic_splitter = SemanticChunker(
+    embeddings, breakpoint_threshold_type="percentile", breakpoint_threshold_amount=50
+)
 job_chunks = semantic_splitter.split_documents(job_offer_text)
 
 job_chunks_texts = [doc.page_content for doc in job_chunks]
@@ -39,30 +49,29 @@ job_chunks_vecs = embeddings.embed_documents(job_chunks_texts)
 
 similarity_matrix = cosine_similarity(job_chunks_vecs, resume_chunks_vecs)
 
-similarities= []
+similarities = []
 for i, job_req in enumerate(job_chunks):
-    # Get the row of scores for this specific job requirement
     scores = similarity_matrix[i]
-    
-    # Find the SINGLE BEST match in the resume
+
     best_match_idx = np.argmax(scores)
     best_score = scores[best_match_idx]
     best_match_text = resume_chunks[best_match_idx]
-    
-    # 5. Classify the Match
+
     if best_score > 0.85:
         status = "MET"
     elif best_score > 0.65:
-        status = "WEAK MATCH" # Good candidate for rewriting!
+        status = "WEAK MATCH"  
     else:
-        status = "MISSING" # Needs to be added from scratch
-        
-    similarities.append({
-        "requirement": job_req,
-        "match_status": status,
-        "best_match_in_resume": best_match_text, # The specific bullet point to edit
-        "score": best_score
-    })
+        status = "MISSING"  
+
+    similarities.append(
+        {
+            "requirement": job_req,
+            "match_status": status,
+            "best_match_in_resume": best_match_text,  
+            "score": best_score,
+        }
+    )
 
 
 # for i, result in enumerate(results):
