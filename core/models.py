@@ -53,3 +53,16 @@ class LoadedDocument:
 
     def _vectorize_self(self, embedding_model: HuggingFaceEmbeddings):
         self.vector = embedding_model.embed_query(self.get_full_text())
+
+@dataclass
+class ChunkMatch:
+    resume_chunk: TextChunk
+    job_chunk: TextChunk
+    similarity: float
+    status: str
+
+    def get_job_text(self) -> str:
+        return self.job_chunk.document.page_content
+
+    def get_resume_text(self) -> str:
+        return self.resume_chunk.document.page_content
