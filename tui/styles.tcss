@@ -166,6 +166,11 @@ MatchListItem.selected {
     margin-left: 1;
 }
 
+#generate-btn {
+    background: #d7ba7d;
+    color: $bg-primary;
+}
+
 #save-btn {
     background: $success-color;
     color: $bg-primary;

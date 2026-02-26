@@ -103,6 +103,7 @@ class ResultsScreen(Screen):
             Label("Edit Resume Chunk", classes="detail-section-title"),
             TextArea(text=match.get_resume_text(), id="edit-textarea", classes="detail-textarea new-textarea"),
             Horizontal(
+                Button("Generate New Chunk", id="generate-btn", variant="warning"),
                 Button("Save Changes", id="save-btn", variant="primary"),
                 Button("Cancel", id="cancel-btn", variant="error"),
                 id="detail-buttons"
@@ -114,6 +115,8 @@ class ResultsScreen(Screen):
         app:ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
         if event.button.id == "finish-btn":
             app.exit()
+        elif event.button.id == "generate-btn":
+            self.app.notify("Generating new chunk... (Not implemented yet)", severity="warning")
         elif event.button.id == "save-btn":
             new_text = self.query_one("#edit-textarea", TextArea).text
             app.resume_eng.update_resume_chunk(self.current_match_id, new_text)

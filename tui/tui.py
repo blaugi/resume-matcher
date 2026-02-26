@@ -31,7 +31,8 @@ class MatchListItem(containers.VerticalGroup):
             self.chunk_id = data_payload
 
     def on_click(self) -> None:
-        self.app.query(MatchListItem).remove_class("selected")
+        for widget in self.app.query(MatchListItem):
+            widget.remove_class("selected")
         self.add_class("selected")
         self.post_message(self.Selected(self, self._match.chunk_id))
 
