@@ -1,13 +1,14 @@
+from textual import containers, widgets
 from textual.app import App, ComposeResult
-from textual.widgets import Static
-from textual.widget import Widget
-from textual import containers
+from textual.message import Message
+
 from core.models import ChunkMatch
-from textual import widgets
 
 
-class MatchWidget(containers.VerticalGroup):
-    """An entry in the match grid select."""
+class MatchListItem(containers.VerticalGroup):
+    """An entry in the match list."""
+
+    can_focus = True
 
     def __init__(self, match: ChunkMatch) -> None:
         self._match = match
@@ -15,9 +16,24 @@ class MatchWidget(containers.VerticalGroup):
 
     def compose(self) -> ComposeResult:
         match = self._match
-        yield widgets.Label(match.get_job_text(), id="job-text")
-        yield widgets.Label(match.get_resume_text(), id="resume-text")
-        yield widgets.Static(str(match.similarity), id="similarity")
+        job_snippet = match.get_job_text()[:60].replace('\n', ' ') + "..."
+        
+        with containers.Horizontal(classes="match-header"):
+            yield widgets.Label(f"Score: {match.similarity:.2f}", classes="match-score")
+            yield widgets.Label(match.status, classes=f"match-status {match.status.lower().replace(' ', '-')}")
+            
+        yield widgets.Label(job_snippet, classes="match-snippet")
+
+    class Selected(Message):
+        def __init__(self, widget_instance, data_payload):
+            super().__init__()
+            self.widget = widget_instance
+            self.chunk_id = data_payload
+
+    def on_click(self) -> None:
+        self.app.query(MatchListItem).remove_class("selected")
+        self.add_class("selected")
+        self.post_message(self.Selected(self, self._match.chunk_id))
 
 
 class MatchWidgetDummy(containers.VerticalGroup):
@@ -40,7 +56,7 @@ class MatchWidgetDummy(containers.VerticalGroup):
             "Resume Chunk:", id="chunk-title-resume", classes="chunk-title"
         )
         yield widgets.Label("Lorem resume ipsu", id="resume-text")
-        yield widgets.Static(str("0.75"), id="similarity")
+        yield widgets.Static("0.75", id="similarity")
 
 
 class GridLayoutExample(App):

@@ -1,0 +1,192 @@
+/* Zed-inspired Theme Variables */
+$bg-primary: #1e1e1e;
+$bg-secondary: #252526;
+$border-color: #3c3c3c;
+$text-primary: #cccccc;
+$text-secondary: #808080;
+$accent-color: #519aba;
+$success-color: #89d185;
+$button-bg: #2b2d30;
+$button-hover: #3e4045;
+
+Screen {
+    background: $bg-primary;
+    color: $text-primary;
+}
+
+/* Input Screen Layout */
+InputScreen Horizontal {
+    height: 1fr;
+}
+
+.input-label {
+    color: $text-secondary;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#resume-input-container, #job-input-container {
+    width: 1fr;
+    padding: 1;
+    border: solid $border-color;
+    background: $bg-secondary;
+}
+
+Input, TextArea {
+    background: $bg-primary;
+    border: solid $border-color;
+    color: $text-primary;
+}
+
+Input:focus, TextArea:focus {
+    border: solid $accent-color;
+}
+
+#process-btn, #finish-btn {
+    width: 100%;
+    height: 3;
+    margin: 1;
+    background: $button-bg;
+    color: $text-primary;
+    border: solid $border-color;
+    content-align: center middle;
+}
+
+#process-btn:hover, #finish-btn:hover {
+    background: $button-hover;
+}
+
+/* Results Screen Master-Detail */
+#results-container {
+    height: 1fr;
+    width: 1fr;
+}
+
+#match-list {
+    width: 35;
+    height: 1fr;
+    border-right: solid $border-color;
+    background: $bg-secondary;
+}
+
+#match-detail {
+    width: 1fr;
+    height: 1fr;
+    padding: 1 2;
+    background: $bg-primary;
+}
+
+MatchListItem {
+    padding: 1;
+    height: auto;
+    border-left: thick transparent;
+    border-bottom: solid $border-color;
+}
+
+MatchListItem:hover {
+    background: $bg-primary;
+}
+
+MatchListItem.selected {
+    border-left: thick $accent-color;
+    background: $bg-primary;
+}
+
+.match-header {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.match-score {
+    color: $accent-color;
+    text-style: bold;
+    width: 1fr;
+}
+
+.match-status {
+    width: auto;
+    text-align: right;
+    text-style: bold;
+}
+
+.match-status.met { color: $success-color; }
+.match-status.weak-match { color: #d7ba7d; } /* Yellowish */
+.match-status.missing { color: #f44747; } /* Red */
+
+.match-snippet {
+    color: $text-secondary;
+    height: auto;
+}
+
+#empty-detail-msg {
+    content-align: center middle;
+    width: 100%;
+    height: 100%;
+    color: $text-secondary;
+}
+
+.detail-section-title {
+    color: $text-primary;
+    text-style: bold;
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+.detail-textarea {
+    height: auto;
+    max-height: 15;
+    border: solid $border-color;
+    background: $bg-secondary;
+    margin-bottom: 1;
+}
+
+.detail-textarea:focus {
+    border: solid $accent-color;
+}
+
+.job-textarea {
+    border-left: thick $accent-color;
+}
+
+.old-textarea {
+    border-left: thick #f44747; /* Red for old */
+}
+
+.new-textarea {
+    border-left: thick $success-color; /* Green for new */
+}
+
+#detail-buttons {
+    height: auto;
+    margin-top: 1;
+    align: right middle;
+}
+
+#detail-buttons Button {
+    margin-left: 1;
+}
+
+#save-btn {
+    background: $success-color;
+    color: $bg-primary;
+}
+
+#cancel-btn {
+    background: #f44747;
+    color: $text-primary;
+}
+
+/* Loading Screen */
+#loading-container {
+    align: center middle;
+    height: 100%;
+}
+
+#loading-label {
+    color: $text-secondary;
+    margin-top: 1;
+}
+
+LoadingIndicator {
+    color: $accent-color;
+}
