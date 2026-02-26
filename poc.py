@@ -1,12 +1,12 @@
 # from langchain_text_splitters import RecursiveCharacterTextSplitter
+import numpy as np
+from dotenv import load_dotenv
+from langchain.chat_models import init_chat_model
 from langchain_community.document_loaders import TextLoader
 from langchain_docling.loader import DoclingLoader
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-from langchain.chat_models import init_chat_model
-from dotenv import load_dotenv
 
 load_dotenv()
 
