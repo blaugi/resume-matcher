@@ -14,29 +14,31 @@ class ResumeEngine:
     def __init__(self):
 
         self.model = init_chat_model(Config.CHAT_MODEL)
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name=Config.EMBEDDING_MODEL
-        )
+        self.embeddings = HuggingFaceEmbeddings(model_name=Config.EMBEDDING_MODEL)
         self.semantic_splitter = SemanticChunker(
-            self.embeddings, breakpoint_threshold_type="percentile",  breakpoint_threshold_amount=50
+            self.embeddings,
+            breakpoint_threshold_type="percentile",
+            breakpoint_threshold_amount=50,
         )
         self.semantic_splitter_low = SemanticChunker(
-            self.embeddings, breakpoint_threshold_type="percentile",  breakpoint_threshold_amount=80
+            self.embeddings,
+            breakpoint_threshold_type="percentile",
+            breakpoint_threshold_amount=80,
         )
 
         self.current_resume: LoadedDocument | None = None
         self.current_job: LoadedDocument | None = None
-        self.match_list: list[ChunkMatch]| None = None
+        self.match_list: list[ChunkMatch] | None = None
         self.original_overall_similarity: float | None = None
 
-    
     def load_resume(self, path: str):
         self.current_resume = LoadedDocument.create_from_path(
             path, self.semantic_splitter, self.embeddings
         )
-    def load_job(self, input_str: str, path:bool = False):
+
+    def load_job(self, input_str: str, path: bool = False):
         if path:
-            self.current_job= LoadedDocument.create_from_path(
+            self.current_job = LoadedDocument.create_from_path(
                 input_str, self.semantic_splitter_low, self.embeddings
             )
         else:
@@ -49,16 +51,17 @@ class ResumeEngine:
         match = self.get_match_from_uuid(chunk_id)
         if self.current_resume and match:
             # Update local chunk text and vector
-            match.resume_chunk.update_text(new_text, self.embeddings) 
-            
+            match.resume_chunk.update_text(new_text, self.embeddings)
+
             # Recalculate local similarity for this chunk match
-            new_similarity = float(cosine_similarity(
-                [match.job_chunk.vector], 
-                [match.resume_chunk.vector]
-            )[0][0])
+            new_similarity = float(
+                cosine_similarity(
+                    [match.job_chunk.vector], [match.resume_chunk.vector]
+                )[0][0]
+            )
             match.similarity = new_similarity
             match.status = self._get_status_from_score(new_similarity)
-            
+
             # Update overall document vector
             self.current_resume._vectorize_self(self.embeddings)
 
@@ -66,7 +69,7 @@ class ResumeEngine:
         if score > 0.85:
             return "MET"
         elif score > 0.65:
-            return "WEAK MATCH"  
+            return "WEAK MATCH"
         else:
             return "MISSING"
 
@@ -77,25 +80,28 @@ class ResumeEngine:
         """Returns (current_similarity, original_similarity)"""
         if not self.current_job or not self.current_resume:
             return 0.0, 0.0
-        
+
         # Calculate cosine similarity between the full document vectors
         similarity = cosine_similarity(
-            [self.current_job.vector], 
-            [self.current_resume.vector]
+            [self.current_job.vector], [self.current_resume.vector]
         )[0][0]
-        
-        orig = self.original_overall_similarity if self.original_overall_similarity is not None else float(similarity)
+
+        orig = (
+            self.original_overall_similarity
+            if self.original_overall_similarity is not None
+            else float(similarity)
+        )
         return float(similarity), orig
 
     def get_matches(self, rerun: bool = False) -> list[ChunkMatch] | None:
         if not self.current_job or not self.current_resume:
-            #TODO see how to send this to user layer
+            # TODO see how to send this to user layer
             print("Need to have a resume and job offer loaded")
-            return 
+            return
 
         if self.match_list and not rerun:
             return self.match_list
-        
+
         # Capture initial overall similarity
         if self.original_overall_similarity is None:
             score, _ = self.get_overall_similarity()
@@ -118,34 +124,34 @@ class ResumeEngine:
                 job_chunk=job_chunk,
                 similarity=float(best_score),
                 status=self._get_status_from_score(best_score),
-                original_similarity=float(best_score)
+                original_similarity=float(best_score),
             )
             matches.append(match)
 
         self.match_list = matches
         return matches
-     
-    def get_match_from_uuid(self, uuid:str) -> ChunkMatch | None:
+
+    def get_match_from_uuid(self, uuid: str) -> ChunkMatch | None:
         if not self.match_list:
             return None
-        
+
         for match in self.match_list:
             if match.chunk_id == uuid:
                 found_match = match
                 break
         else:
-            found_match= None 
-        return found_match 
+            found_match = None
+        return found_match
 
-    def get_match_texts(self, uuid:str) -> tuple[str,str]:
-        """ Returns job_text, resume_text as strings"""
+    def get_match_texts(self, uuid: str) -> tuple[str, str]:
+        """Returns job_text, resume_text as strings"""
         chunk_match = self.get_match_from_uuid(uuid)
         if chunk_match:
             return chunk_match.get_job_text(), chunk_match.get_resume_text()
         else:
             return "Error", "Error"
-        
-    def _call_llm(self, sys_prompt:str, query:str) -> str:
+
+    def _call_llm(self, sys_prompt: str, query: str) -> str:
         messages = [
             (
                 "system",
@@ -154,15 +160,10 @@ class ResumeEngine:
             ("human", query),
         ]
         return self.model.invoke(messages).text
-    
-    def reformat_chunk(self, chunk:ChunkMatch):
+
+    def reformat_chunk(self, chunk: ChunkMatch):
         prompt = Config.Prompts.reformat_chunk.format(
-            job_chunk=chunk.get_job_text(), 
-            resume_chunk=chunk.get_resume_text()
+            job_chunk=chunk.get_job_text(), resume_chunk=chunk.get_resume_text()
         )
-        
+
         return self._call_llm(sys_prompt="", query=prompt)
-
-
-
-        

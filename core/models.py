@@ -54,7 +54,7 @@ class LoadedDocument:
     ):
         document = Document(
             page_content=text,
-            metadata={"source": "in-memory string", "date": "2026-02-26"}
+            metadata={"source": "in-memory string", "date": "2026-02-26"},
         )
 
         if document_text := document.page_content:
@@ -69,7 +69,6 @@ class LoadedDocument:
             chunks.append(TextChunk(chunk, chunk_embeddings[i]))
 
         return cls(chunks, full_vector)
-    
 
     # This is assuming the order of the chunks wont change
     def get_full_text(self) -> str:
@@ -80,6 +79,7 @@ class LoadedDocument:
 
     def _vectorize_self(self, embedding_model: HuggingFaceEmbeddings):
         self.vector = embedding_model.embed_query(self.get_full_text())
+
 
 @dataclass
 class ChunkMatch:

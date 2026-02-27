@@ -1,7 +1,8 @@
 # from langchain_text_splitters import RecursiveCharacterTextSplitter
 import numpy as np
 from dotenv import load_dotenv
-from langchain.chat_models import init_chat_model
+
+# from langchain.chat_models import init_chat_model
 from langchain_community.document_loaders import TextLoader
 from langchain_docling.loader import DoclingLoader
 from langchain_experimental.text_splitter import SemanticChunker
@@ -60,15 +61,15 @@ for i, job_req in enumerate(job_chunks):
     if best_score > 0.85:
         status = "MET"
     elif best_score > 0.65:
-        status = "WEAK MATCH"  
+        status = "WEAK MATCH"
     else:
-        status = "MISSING"  
+        status = "MISSING"
 
     similarities.append(
         {
             "requirement": job_req,
             "match_status": status,
-            "best_match_in_resume": best_match_text,  
+            "best_match_in_resume": best_match_text,
             "score": best_score,
         }
     )
