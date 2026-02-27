@@ -27,6 +27,7 @@ class ResumeEngine:
         self.current_resume: LoadedDocument | None = None
         self.current_job: LoadedDocument | None = None
         self.match_list: list[ChunkMatch]| None = None
+        self.original_overall_similarity: float | None = None
 
     
     def load_resume(self, path: str):
@@ -44,18 +45,38 @@ class ResumeEngine:
             )
 
     def update_resume_chunk(self, chunk_id: str, new_text: str):
-        """Update text and re-vectorize (Write)"""
+        """Update text, re-vectorize local chunk, update full doc vector, and recalculate similarity."""
         match = self.get_match_from_uuid(chunk_id)
         if self.current_resume and match:
-                match.resume_chunk.update_text(new_text, self.embeddings) 
-                self.current_resume._vectorize_self(self.embeddings)
+            # Update local chunk text and vector
+            match.resume_chunk.update_text(new_text, self.embeddings) 
+            
+            # Recalculate local similarity for this chunk match
+            new_similarity = float(cosine_similarity(
+                [match.job_chunk.vector], 
+                [match.resume_chunk.vector]
+            )[0][0])
+            match.similarity = new_similarity
+            match.status = self._get_status_from_score(new_similarity)
+            
+            # Update overall document vector
+            self.current_resume._vectorize_self(self.embeddings)
+
+    def _get_status_from_score(self, score: float) -> str:
+        if score > 0.85:
+            return "MET"
+        elif score > 0.65:
+            return "WEAK MATCH"  
+        else:
+            return "MISSING"
 
     def get_resume_chunks(self) -> list[TextChunk]:
         return self.current_resume.chunks if self.current_resume else []
 
-    def get_overall_similarity(self) -> float:
+    def get_overall_similarity(self) -> tuple[float, float]:
+        """Returns (current_similarity, original_similarity)"""
         if not self.current_job or not self.current_resume:
-            return 0.0
+            return 0.0, 0.0
         
         # Calculate cosine similarity between the full document vectors
         similarity = cosine_similarity(
@@ -63,7 +84,8 @@ class ResumeEngine:
             [self.current_resume.vector]
         )[0][0]
         
-        return float(similarity)
+        orig = self.original_overall_similarity if self.original_overall_similarity is not None else float(similarity)
+        return float(similarity), orig
 
     def get_matches(self, rerun: bool = False) -> list[ChunkMatch] | None:
         if not self.current_job or not self.current_resume:
@@ -73,6 +95,11 @@ class ResumeEngine:
 
         if self.match_list and not rerun:
             return self.match_list
+        
+        # Capture initial overall similarity
+        if self.original_overall_similarity is None:
+            score, _ = self.get_overall_similarity()
+            self.original_overall_similarity = score
 
         resume_vecs = [chunk.vector for chunk in self.current_resume.chunks]
         job_vecs = [chunk.vector for chunk in self.current_job.chunks]
@@ -86,18 +113,12 @@ class ResumeEngine:
             best_score = scores[best_match_idx]
             resume_match = self.current_resume.chunks[best_match_idx]
 
-            if best_score > 0.85:
-                status = "MET"
-            elif best_score > 0.65:
-                status = "WEAK MATCH"  
-            else:
-                status = "MISSING"
-
             match = ChunkMatch(
                 resume_chunk=resume_match,
                 job_chunk=job_chunk,
-                similarity=best_score,
-                status=status,
+                similarity=float(best_score),
+                status=self._get_status_from_score(best_score),
+                original_similarity=float(best_score)
             )
             matches.append(match)
 

@@ -1,11 +1,11 @@
 from textual import work
 from textual.app import App, ComposeResult
+from textual.css.query import NoMatches
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import (
     Button,
     DirectoryTree,
-    Footer,
     Header,
     Input,
     Label,
@@ -14,7 +14,6 @@ from textual.widgets import (
 )
 
 from core.engine import ResumeEngine
-from core.models import ChunkMatch
 from tui.tui import MatchListItem
 
 
@@ -42,7 +41,6 @@ class InputScreen(Screen):
                 yield TextArea(id="job-text")
         
         yield Button("Find Matches", id="process-btn")
-        yield Footer()
 
     def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
         """Update the input field when a file is selected in the tree."""
@@ -55,25 +53,19 @@ class InputScreen(Screen):
             resume_path = self.query_one("#resume-path", Input).value
             job_offer = self.query_one("#job-text", TextArea).text
             
-            # Push loading screen first
             app.push_screen(LoadingScreen())
-            
-            # Start background processing
             self.process_documents(resume_path, job_offer)
 
     @work(thread=True)
     def process_documents(self, resume_path: str, job_offer: str) -> None:
         app:ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
         
-        # Run the heavy engine tasks in the background thread
         app.resume_eng.load_resume(resume_path)
         app.resume_eng.load_job(job_offer)
         
-        # Once done, tell the main UI thread to update
         self.app.call_from_thread(self.show_results)
 
     def show_results(self) -> None:
-        # Pop the loading screen and push results
         self.app.pop_screen()
         self.app.push_screen(ResultsScreen())
 
@@ -81,12 +73,13 @@ class ResultsScreen(Screen):
     """Screen displaying the master-detail view of matches."""
 
     def compose(self) -> ComposeResult:
-        app:ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
+        app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
         yield Header()
-        
-        overall_score = app.resume_eng.get_overall_similarity()
-        yield Label(f"Overall Resume Match: {overall_score:.2%}", id="overall-score-label")
-        
+
+        current_score, original_score = app.resume_eng.get_overall_similarity()
+        display_score = f"{original_score:.2%} -> {current_score:.2%}" if current_score != original_score else f"{current_score:.2%}"
+        yield Label(f"Overall Resume Match: {display_score}", id="overall-score-label")
+
         with Horizontal(id="results-container"):
             with VerticalScroll(id="match-list"):
                 if matches := app.resume_eng.get_matches():
@@ -97,7 +90,6 @@ class ResultsScreen(Screen):
                 yield Label("Select a match to view details", id="empty-detail-msg")
                 
         yield Button("Finish", id="finish-btn", variant="primary")
-        yield Footer()
 
     async def on_match_list_item_selected(self, message: MatchListItem.Selected) -> None:
         for widget in self.query(MatchListItem).results():
@@ -110,14 +102,12 @@ class ResultsScreen(Screen):
         app:ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
         detail_container = self.query_one("#match-detail", VerticalScroll)
         
-        # Clear current details
         await detail_container.query("*").remove()
             
         match = app.resume_eng.get_match_from_uuid(match_id)
         if not match:
             return
             
-        # Mount new details
         await detail_container.mount(
             Label("Job Requirement", classes="detail-section-title"),
             TextArea(text=match.get_job_text(), read_only=True, classes="detail-textarea job-textarea"),
@@ -135,24 +125,85 @@ class ResultsScreen(Screen):
         self.current_match_id = match_id
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        app:ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
+        app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
         if event.button.id == "finish-btn":
             app.exit()
         elif event.button.id == "generate-btn":
-            if chunk := app.resume_eng.get_match_from_uuid(self.current_match_id):
-                new_chunk_text = app.resume_eng.reformat_chunk(chunk)
-                self.query_one("#edit-textarea", TextArea).text = new_chunk_text
-            else:
-                app.notify("Failed retrieving chunk for processing.")
-
+            self.generate_new_chunk()
         elif event.button.id == "save-btn":
             new_text = self.query_one("#edit-textarea", TextArea).text
             app.resume_eng.update_resume_chunk(self.current_match_id, new_text)
-            app.notify("Chunk updated successfully!")
+
+            # Refresh UI
+            # 1. Update the overall score label
+            current_overall, original_overall = app.resume_eng.get_overall_similarity()
+            display_overall = f"{original_overall:.2%} -> {current_overall:.2%}" if current_overall != original_overall else f"{current_overall:.2%}"
+            self.query_one("#overall-score-label", Label).update(
+                f"Overall Resume Match: {display_overall}"
+            )
+
+            # 2. Update the MatchListItem in the list
+            try:
+                list_item = self.query_one(f"#match-{self.current_match_id}", MatchListItem)
+                list_item.refresh_match_data()
+            except NoMatches:
+                pass # Widget might have been unmounted
+            
+            self.app.notify("Chunk updated successfully!")
         elif event.button.id == "cancel-btn":
             match = app.resume_eng.get_match_from_uuid(self.current_match_id)
             if match:
                 self.query_one("#edit-textarea", TextArea).text = match.get_resume_text()
+
+    @work(thread=True)
+    def generate_new_chunk(self) -> None:
+        """Call LLM to reformat the chunk and update the view."""
+        app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
+        match_id = self.current_match_id
+
+        # Get chunk outside thread for safety
+        match = app.resume_eng.get_match_from_uuid(match_id)
+        if not match:
+            return
+
+        # Notify UI we're starting
+        self.app.call_from_thread(self._set_loading_state, True)
+
+        try:
+            new_text = app.resume_eng.reformat_chunk(match)
+            # Send result back (verify we are still on that chunk)
+            self.app.call_from_thread(self._finish_gen, match_id, new_text)
+        except Exception as e:
+            self.app.call_from_thread(
+                self.app.notify, f"Error generating: {str(e)}", severity="error"
+            )
+        finally:
+            self.app.call_from_thread(self._set_loading_state, False)
+
+    def _set_loading_state(self, is_loading: bool) -> None:
+        """Helper to show/hide loading indicator and toggle button."""
+        try:
+            gen_btn = self.query_one("#generate-btn", Button)
+            gen_btn.disabled = is_loading
+
+            if is_loading:
+                if not self.query("#gen-loading"):
+                    self.query_one("#match-detail", VerticalScroll).mount(
+                        LoadingIndicator(id="gen-loading"), before="#detail-buttons"
+                    )
+            else:
+                self.query("#gen-loading").remove()
+        except NoMatches:
+            pass
+
+    def _finish_gen(self, match_id: str, new_text: str) -> None:
+        """Update the TextArea with generated text if match hasn't changed."""
+        if self.current_match_id == match_id:
+            try:
+                self.query_one("#edit-textarea", TextArea).text = new_text
+                self.app.notify("Generation complete!")
+            except NoMatches:
+                pass
 
 
 class ResumeMatcherApp(App):
@@ -163,6 +214,5 @@ class ResumeMatcherApp(App):
         self.resume_eng = resume_eng
 
     def on_mount(self) -> None:
-        # Start the app on the Input Screen
         self.push_screen(InputScreen())
 

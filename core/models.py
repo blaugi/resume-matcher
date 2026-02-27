@@ -87,7 +87,12 @@ class ChunkMatch:
     job_chunk: TextChunk
     similarity: float
     status: str
+    original_similarity: float = 0.0
     chunk_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    def __post_init__(self):
+        if self.original_similarity == 0.0:
+            self.original_similarity = self.similarity
 
     def get_job_text(self) -> str:
         return self.job_chunk.document.page_content

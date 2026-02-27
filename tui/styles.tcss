@@ -205,6 +205,12 @@ MatchListItem.selected {
     color: $text-primary;
 }
 
+#gen-loading {
+    margin: 1 0;
+    height: 1;
+    color: $accent-color;
+}
+
 /* Loading Screen */
 #loading-container {
     align: center middle;
