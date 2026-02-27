@@ -1,16 +1,21 @@
 from langchain.chat_models import init_chat_model
-
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
+from pydantic import BaseModel, Field
 from sklearn.metrics.pairwise import cosine_similarity
 
 from core.config import Config
 from core.models import LoadedDocument, SuggestedEdit
-from pydantic import BaseModel, Field
 
 
 class SuggestedEditsList(BaseModel):
     edits: list[SuggestedEdit] = Field(
         description="List of suggested edits to the resume."
+    )
+    present_keywords:str= Field(
+        description="Comma separated list of the keywords from the job offer present in the resume already."
+    )
+    missing_keywords:str= Field(
+        description="Comma separated list of the keywords from the job offer not present in the resume."
     )
 
 
@@ -22,13 +27,12 @@ class ResumeEngine:
 
         self.current_resume: LoadedDocument | None = None
         self.current_job: LoadedDocument | None = None
+        self.keywords: tuple[list[str], list[str]] | None = None
         self.edit_list: list[SuggestedEdit] | None = None
         self.original_overall_similarity: float | None = None
 
     def load_resume(self, path: str):
-        self.current_resume = LoadedDocument.create_from_path(
-            path, self.embeddings
-        )
+        self.current_resume = LoadedDocument.create_from_path(path, self.embeddings)
 
     def load_job(self, input_str: str, path: bool = False):
         if path:
@@ -84,6 +88,8 @@ class ResumeEngine:
         structured_model = self.model.with_structured_output(SuggestedEditsList)
         result = structured_model.invoke(prompt)
 
+        self.keywords = result.present_keywords.split(","), result.missing_keywords.split(",")
+        
         edits = result.edits
         baseline_similarity = self.calculate_document_similarity(resume_text, job_text)
 
@@ -121,7 +127,6 @@ class ResumeEngine:
                 edit.original_text, new_text, 1
             )
             edit.status = "accepted"
-            # Update overall vector
             self.current_resume._vectorize_self(self.embeddings)
             return True
         return False

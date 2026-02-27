@@ -100,18 +100,18 @@ Input:focus, TextArea:focus {
     background: $bg-primary;
 }
 
-EditListItem {
+EditListItem, KeywordListitem {
     padding: 1;
     height: auto;
     border-left: thick transparent;
     border-bottom: solid $border-color;
 }
 
-EditListItem:hover {
+EditListItem:hover, KeywordListItem:hover {
     background: $bg-primary;
 }
 
-EditListItem.selected {
+EditListItem.selected, KeywordListItem.selected {
     border-left: thick $accent-color;
     background: $bg-primary;
 }

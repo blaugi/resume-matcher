@@ -14,7 +14,7 @@ from textual.widgets import (
 )
 
 from core.engine import ResumeEngine
-from tui.tui import EditListItem
+from tui.tui import EditListItem, ItemSelected, KeywordListItem
 
 
 class LoadingScreen(Screen):
@@ -99,6 +99,8 @@ class ResultsScreen(Screen):
 
         with Horizontal(id="results-container"):
             with VerticalScroll(id="match-list"):
+                if keywords := app.resume_eng.keywords:
+                    yield KeywordListItem(keywords)
                 if edits := app.resume_eng.edit_list:
                     for edit in edits:
                         yield EditListItem(edit)
@@ -108,49 +110,70 @@ class ResultsScreen(Screen):
 
         yield Button("Finish", id="finish-btn", variant="primary")
 
-    async def on_edit_list_item_selected(self, message: EditListItem.Selected) -> None:
-        for widget in self.query(EditListItem).results():
+    async def on_item_selected(self, message: ItemSelected) -> None:
+        for widget in self.query("EditListItem, KeywordListItem").results():
             widget.set_class(widget.id == message.widget.id, "selected")
 
-        selected_edit_id = message.edit_id
-        await self.show_detail(selected_edit_id)
+        selected_edit_id = message.item_id
+        await self.show_detail_edit(selected_edit_id)
 
-    async def show_detail(self, edit_id: str) -> None:
+    async def show_detail_edit(self, edit_id: str) -> None:
         app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
         detail_container = self.query_one("#match-detail", VerticalScroll)
 
         await detail_container.query("*").remove()
 
-        edit = app.resume_eng.get_edit_from_id(edit_id)
-        if not edit:
-            return
+        if edit_id != "keyword-list-item":
 
-        await detail_container.mount(
-            Label("Reason for Edit", classes="detail-section-title"),
-            TextArea(
-                text=edit.reason,
-                read_only=True,
-                classes="detail-textarea job-textarea",
-            ),
-            Label("Original Text", classes="detail-section-title"),
-            TextArea(
-                text=edit.original_text,
-                read_only=True,
-                classes="detail-textarea old-textarea",
-            ),
-            Label("Suggested New Text", classes="detail-section-title"),
-            TextArea(
-                text=edit.new_text,
-                id="edit-textarea",
-                classes="detail-textarea new-textarea",
-            ),
-            Horizontal(
-                Button("Accept", id="accept-btn", variant="success"),
-                Button("Reject", id="reject-btn", variant="error"),
-                id="detail-buttons",
-            ),
-        )
-        self.current_edit_id = edit_id
+            edit = app.resume_eng.get_edit_from_id(edit_id)
+            if not edit:
+                return
+            await detail_container.mount(
+                Label("Reason for Edit", classes="detail-section-title"),
+                TextArea(
+                    text=edit.reason,
+                    read_only=True,
+                    classes="detail-textarea job-textarea",
+                ),
+                Label("Original Text", classes="detail-section-title"),
+                TextArea(
+                    text=edit.original_text,
+                    read_only=True,
+                    classes="detail-textarea old-textarea",
+                ),
+                Label("Suggested New Text", classes="detail-section-title"),
+                TextArea(
+                    text=edit.new_text,
+                    id="edit-textarea",
+                    classes="detail-textarea new-textarea",
+                ),
+                Horizontal(
+                    Button("Accept", id="accept-btn", variant="success"),
+                    Button("Reject", id="reject-btn", variant="error"),
+                    id="detail-buttons",
+                ),
+            )
+            self.current_edit_id = edit_id
+        else:
+            keywords = app.resume_eng.keywords
+            if not keywords:
+                return
+            await detail_container.mount(
+                Label("Present Keywords:", classes="detail-section-title"),
+                TextArea(
+                    text=' '.join(keywords[0]),
+                    read_only=True,
+                    classes="detail-textarea job-textarea",
+                ),
+                Label("Missing Keywords", classes="detail-section-title"),
+                TextArea(
+                    text=' '.join(keywords[1]),
+                    read_only=True,
+                    classes="detail-textarea old-textarea",
+                ),
+            )
+            self.current_edit_id = edit_id
+
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]

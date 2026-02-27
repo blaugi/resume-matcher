@@ -5,6 +5,13 @@ from textual.message import Message
 from core.models import SuggestedEdit
 
 
+class ItemSelected(Message):
+    """Shared message for when a list item is clicked."""
+    def __init__(self, widget_instance, data_payload):
+        super().__init__()
+        self.widget = widget_instance
+        self.item_id = data_payload
+
 class EditListItem(containers.VerticalGroup):
     """An entry in the edit list."""
 
@@ -44,11 +51,29 @@ class EditListItem(containers.VerticalGroup):
             f"match-status {self._edit.status.lower().replace(' ', '-')}"
         )
 
-    class Selected(Message):
-        def __init__(self, widget_instance, data_payload):
-            super().__init__()
-            self.widget = widget_instance
-            self.edit_id = data_payload
+    def on_click(self) -> None:
+        self.focus()
+        self.post_message(ItemSelected(self, self._edit.id))
+
+
+class KeywordListItem(containers.VerticalGroup):
+    """An entry in the edit list."""
+    can_focus = True
+
+    def __init__(self, keywords: tuple[list[str], list[str]]) -> None:
+        self._present_keywords= keywords[0] 
+        self._missing_keywords= keywords[1] 
+        super().__init__(id="keyword-list-item")
+
+    def compose(self) -> ComposeResult:
+
+        with containers.Horizontal(classes="match-header"):
+            yield widgets.Label(
+                "Keywords", classes="match-score", id="match-score-label"
+            )
+        yield widgets.Label("Keyword Information", classes="match-snippet")
+
 
     def on_click(self) -> None:
-        self.post_message(self.Selected(self, self._edit.id))
+        self.focus()
+        self.post_message(ItemSelected(self, "keyword-list-item"))

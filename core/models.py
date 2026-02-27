@@ -2,11 +2,8 @@ import uuid
 from dataclasses import dataclass
 
 from langchain_community.document_loaders import TextLoader
-from langchain_core.documents import Document
 from langchain_docling.loader import DoclingLoader
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
-
-
 from pydantic import BaseModel, Field
 
 
@@ -16,10 +13,10 @@ class SuggestedEdit(BaseModel):
         description="The exact original text from the resume to be replaced."
     )
     new_text: str = Field(
-        description="The suggested new text to replace the original text."
+        description="The suggested new text to replace the original text. You may add 'variables', that is to say, values/information you do not know but would be interesting to add. Add them with this **format**."
     )
     reason: str = Field(
-        description="A short explanation of why this edit is suggested."
+        description="A short explanation of why this edit is suggested. Include the motivating section from the job offer (truncated if needed)."
     )
     status: str = Field(
         default="pending",
