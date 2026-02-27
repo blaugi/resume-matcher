@@ -1,23 +1,27 @@
 import numpy as np
+from langchain.chat_models import init_chat_model
 
 # from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
 
+from core.config import Config
 from core.models import ChunkMatch, LoadedDocument, TextChunk
 
 
 class ResumeEngine:
     def __init__(self):
+
+        self.model = init_chat_model(Config.CHAT_MODEL)
         self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-mpnet-base-v2"
+            model_name=Config.EMBEDDING_MODEL
         )
         self.semantic_splitter = SemanticChunker(
-            self.embeddings, breakpoint_threshold_type="percentile"
+            self.embeddings, breakpoint_threshold_type="percentile",  breakpoint_threshold_amount=50
         )
         self.semantic_splitter_low = SemanticChunker(
-            self.embeddings, breakpoint_threshold_type="percentile"
+            self.embeddings, breakpoint_threshold_type="percentile",  breakpoint_threshold_amount=80
         )
 
         self.current_resume: LoadedDocument | None = None
@@ -48,6 +52,18 @@ class ResumeEngine:
 
     def get_resume_chunks(self) -> list[TextChunk]:
         return self.current_resume.chunks if self.current_resume else []
+
+    def get_overall_similarity(self) -> float:
+        if not self.current_job or not self.current_resume:
+            return 0.0
+        
+        # Calculate cosine similarity between the full document vectors
+        similarity = cosine_similarity(
+            [self.current_job.vector], 
+            [self.current_resume.vector]
+        )[0][0]
+        
+        return float(similarity)
 
     def get_matches(self, rerun: bool = False) -> list[ChunkMatch] | None:
         if not self.current_job or not self.current_resume:
@@ -107,5 +123,25 @@ class ResumeEngine:
             return chunk_match.get_job_text(), chunk_match.get_resume_text()
         else:
             return "Error", "Error"
+        
+    def _call_llm(self, sys_prompt:str, query:str) -> str:
+        messages = [
+            (
+                "system",
+                sys_prompt,
+            ),
+            ("human", query),
+        ]
+        return self.model.invoke(messages).text
+    
+    def reformat_chunk(self, chunk:ChunkMatch):
+        prompt = Config.Prompts.reformat_chunk.format(
+            job_chunk=chunk.get_job_text(), 
+            resume_chunk=chunk.get_resume_text()
+        )
+        
+        return self._call_llm(sys_prompt="", query=prompt)
+
+
 
         

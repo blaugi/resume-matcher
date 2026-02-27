@@ -1,12 +1,22 @@
+from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, TextArea, LoadingIndicator, Label
-from textual import work
+from textual.widgets import (
+    Button,
+    DirectoryTree,
+    Footer,
+    Header,
+    Input,
+    Label,
+    LoadingIndicator,
+    TextArea,
+)
 
 from core.engine import ResumeEngine
 from core.models import ChunkMatch
 from tui.tui import MatchListItem
+
 
 class LoadingScreen(Screen):
     """Screen displayed while the engine processes documents."""
@@ -24,6 +34,8 @@ class InputScreen(Screen):
             with Vertical(id="resume-input-container"):
                 yield Label("Resume Path", classes="input-label")
                 yield Input(placeholder="Enter path to resume (e.g., data/resume.pdf)", id="resume-path")
+                yield Label("Or select from data folder:", classes="input-label", id="tree-label")
+                yield DirectoryTree("./data", id="resume-tree")
             
             with Vertical(id="job-input-container"):
                 yield Label("Job Description", classes="input-label")
@@ -31,6 +43,11 @@ class InputScreen(Screen):
         
         yield Button("Find Matches", id="process-btn")
         yield Footer()
+
+    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
+        """Update the input field when a file is selected in the tree."""
+        input_widget = self.query_one("#resume-path", Input)
+        input_widget.value = str(event.path)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         app:ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
@@ -67,6 +84,9 @@ class ResultsScreen(Screen):
         app:ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
         yield Header()
         
+        overall_score = app.resume_eng.get_overall_similarity()
+        yield Label(f"Overall Resume Match: {overall_score:.2%}", id="overall-score-label")
+        
         with Horizontal(id="results-container"):
             with VerticalScroll(id="match-list"):
                 if matches := app.resume_eng.get_matches():
@@ -80,6 +100,9 @@ class ResultsScreen(Screen):
         yield Footer()
 
     async def on_match_list_item_selected(self, message: MatchListItem.Selected) -> None:
+        for widget in self.query(MatchListItem).results():
+            widget.set_class(widget.id == message.widget.id, "selected")
+            
         selected_match_id = message.chunk_id
         await self.show_detail(selected_match_id)
 
@@ -116,11 +139,16 @@ class ResultsScreen(Screen):
         if event.button.id == "finish-btn":
             app.exit()
         elif event.button.id == "generate-btn":
-            self.app.notify("Generating new chunk... (Not implemented yet)", severity="warning")
+            if chunk := app.resume_eng.get_match_from_uuid(self.current_match_id):
+                new_chunk_text = app.resume_eng.reformat_chunk(chunk)
+                self.query_one("#edit-textarea", TextArea).text = new_chunk_text
+            else:
+                app.notify("Failed retrieving chunk for processing.")
+
         elif event.button.id == "save-btn":
             new_text = self.query_one("#edit-textarea", TextArea).text
             app.resume_eng.update_resume_chunk(self.current_match_id, new_text)
-            self.app.notify("Chunk updated successfully!")
+            app.notify("Chunk updated successfully!")
         elif event.button.id == "cancel-btn":
             match = app.resume_eng.get_match_from_uuid(self.current_match_id)
             if match:
@@ -128,7 +156,7 @@ class ResultsScreen(Screen):
 
 
 class ResumeMatcherApp(App):
-    CSS_PATH = "styles.tcss" # (Optional) Moving CSS to a separate file is cleaner!
+    CSS_PATH = "styles.tcss" 
 
     def __init__(self, resume_eng: ResumeEngine):
         super().__init__()
@@ -138,8 +166,3 @@ class ResumeMatcherApp(App):
         # Start the app on the Input Screen
         self.push_screen(InputScreen())
 
-if __name__ == "__main__":
-
-    resume_eng = ResumeEngine()
-    app = ResumeMatcherApp(resume_eng)
-    app.run()
