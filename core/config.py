@@ -23,3 +23,17 @@ Job Description Chunk:
 {job_chunk}
 
 Return the keywords as a comma-separated list."""
+
+        markdown_format_prompt = """You are an expert document formatter. Your task is to format the provided resume text into Markdown.
+Do not change the core content, only apply Markdown formatting (headings, bullet points, bold text, etc.) to make it look professional.
+Return ONLY the formatted Markdown text.
+
+Resume Text:
+{text}"""
+
+        typst_format_prompt = """You are an expert document formatter. Your task is to format the provided resume text into Typst.
+Do not change the core content, only apply Typst formatting to make it look professional.
+Return ONLY the formatted Typst text.
+
+Resume Text:
+{text}"""

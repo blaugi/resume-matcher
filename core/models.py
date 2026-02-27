@@ -1,11 +1,32 @@
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from langchain_community.document_loaders import TextLoader
 from langchain_core.documents import Document
 from langchain_docling.loader import DoclingLoader
-from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
+
+
+from pydantic import BaseModel, Field
+
+
+class SuggestedEdit(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    original_text: str = Field(
+        description="The exact original text from the resume to be replaced."
+    )
+    new_text: str = Field(
+        description="The suggested new text to replace the original text."
+    )
+    reason: str = Field(
+        description="A short explanation of why this edit is suggested."
+    )
+    status: str = Field(
+        default="pending",
+        description="Status of the edit: pending, accepted, rejected.",
+    )
+    projected_similarity: float = Field(default=0.0)
+    similarity_delta: float = Field(default=0.0)
 
 
 @dataclass
@@ -22,10 +43,15 @@ class TextChunk:
 class LoadedDocument:
     chunks: list[TextChunk]
     vector: list[int | float]
+    current_text: str = ""
 
     @classmethod
     def create_from_path(
-        cls, path: str, chunker: SemanticChunker, embedding_model: HuggingFaceEmbeddings
+        cls,
+        path: str,
+        chunker,
+        embedding_model: HuggingFaceEmbeddings,
+        fallback_chunker=None,
     ):
         match path.split(".")[1]:
             case "pdf":
@@ -39,6 +65,9 @@ class LoadedDocument:
             full_vector = embedding_model.embed_query(document_text)
 
         chunked_document = chunker.split_documents(document)
+        if len(chunked_document) <= 1 and fallback_chunker:
+            chunked_document = fallback_chunker.split_documents(document)
+
         chunked_document_texts = [doc.page_content for doc in chunked_document]
         chunk_embeddings = embedding_model.embed_documents(chunked_document_texts)
 
@@ -46,11 +75,15 @@ class LoadedDocument:
         for i, chunk in enumerate(chunked_document):
             chunks.append(TextChunk(chunk, chunk_embeddings[i]))
 
-        return cls(chunks, full_vector)
+        return cls(chunks, full_vector, current_text=document_text or "")
 
     @classmethod
     def create_from_text(
-        cls, text: str, chunker: SemanticChunker, embedding_model: HuggingFaceEmbeddings
+        cls,
+        text: str,
+        chunker,
+        embedding_model: HuggingFaceEmbeddings,
+        fallback_chunker=None,
     ):
         document = Document(
             page_content=text,
@@ -61,6 +94,9 @@ class LoadedDocument:
             full_vector = embedding_model.embed_query(document_text)
 
         chunked_document = chunker.split_documents([document])
+        if len(chunked_document) <= 1 and fallback_chunker:
+            chunked_document = fallback_chunker.split_documents([document])
+
         chunked_document_texts = [doc.page_content for doc in chunked_document]
         chunk_embeddings = embedding_model.embed_documents(chunked_document_texts)
 
@@ -68,34 +104,11 @@ class LoadedDocument:
         for i, chunk in enumerate(chunked_document):
             chunks.append(TextChunk(chunk, chunk_embeddings[i]))
 
-        return cls(chunks, full_vector)
+        return cls(chunks, full_vector, current_text=document_text or "")
 
     # This is assuming the order of the chunks wont change
     def get_full_text(self) -> str:
-        full_text = ""
-        for chunk in self.chunks:
-            full_text += chunk.document.page_content
-        return full_text
+        return self.current_text
 
     def _vectorize_self(self, embedding_model: HuggingFaceEmbeddings):
         self.vector = embedding_model.embed_query(self.get_full_text())
-
-
-@dataclass
-class ChunkMatch:
-    resume_chunk: TextChunk
-    job_chunk: TextChunk
-    similarity: float
-    status: str
-    original_similarity: float = 0.0
-    chunk_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-
-    def __post_init__(self):
-        if self.original_similarity == 0.0:
-            self.original_similarity = self.similarity
-
-    def get_job_text(self) -> str:
-        return self.job_chunk.document.page_content
-
-    def get_resume_text(self) -> str:
-        return self.resume_chunk.document.page_content

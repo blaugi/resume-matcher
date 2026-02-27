@@ -100,18 +100,18 @@ Input:focus, TextArea:focus {
     background: $bg-primary;
 }
 
-MatchListItem {
+EditListItem {
     padding: 1;
     height: auto;
     border-left: thick transparent;
     border-bottom: solid $border-color;
 }
 
-MatchListItem:hover {
+EditListItem:hover {
     background: $bg-primary;
 }
 
-MatchListItem.selected {
+EditListItem.selected {
     border-left: thick $accent-color;
     background: $bg-primary;
 }
@@ -133,9 +133,10 @@ MatchListItem.selected {
     text-style: bold;
 }
 
-.match-status.met { color: $success-color; }
-.match-status.weak-match { color: #d7ba7d; } /* Yellowish */
-.match-status.missing { color: #f44747; } /* Red */
+.match-status.accepted { color: $success-color; }
+.match-status.pending { color: #d7ba7d; } /* Yellowish */
+.match-status.rejected { color: #f44747; } /* Red */
+.match-status.invalid { color: #808080; } /* Gray */
 
 .match-snippet {
     color: $text-secondary;
@@ -190,25 +191,14 @@ MatchListItem.selected {
     margin-left: 1;
 }
 
-#generate-btn {
-    background: #d7ba7d;
-    color: $bg-primary;
-}
-
-#save-btn {
+#accept-btn {
     background: $success-color;
     color: $bg-primary;
 }
 
-#cancel-btn {
+#reject-btn {
     background: #f44747;
-    color: $text-primary;
-}
-
-#gen-loading {
-    margin: 1 0;
-    height: 1;
-    color: $accent-color;
+    color: $bg-primary;
 }
 
 /* Loading Screen */
@@ -224,4 +214,31 @@ MatchListItem.selected {
 
 LoadingIndicator {
     color: $accent-color;
+}
+
+/* Finalize Screen */
+#finalize-container {
+    height: 1fr;
+    width: 1fr;
+    padding: 1;
+}
+
+#format-buttons {
+    height: auto;
+    margin-bottom: 1;
+    align: center middle;
+}
+
+#format-buttons Button {
+    margin: 0 1;
+}
+
+#preview {
+    height: 1fr;
+    border: solid $border-color;
+    background: $bg-secondary;
+}
+
+#preview:focus {
+    border: solid $accent-color;
 }

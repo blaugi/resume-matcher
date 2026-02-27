@@ -1,13 +1,19 @@
-import numpy as np
 from langchain.chat_models import init_chat_model
 
-# from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
 
 from core.config import Config
-from core.models import ChunkMatch, LoadedDocument, TextChunk
+from core.models import LoadedDocument, TextChunk, SuggestedEdit
+from pydantic import BaseModel, Field
+
+
+class SuggestedEditsList(BaseModel):
+    edits: list[SuggestedEdit] = Field(
+        description="List of suggested edits to the resume."
+    )
 
 
 class ResumeEngine:
@@ -23,55 +29,38 @@ class ResumeEngine:
         self.semantic_splitter_low = SemanticChunker(
             self.embeddings,
             breakpoint_threshold_type="percentile",
-            breakpoint_threshold_amount=80,
+            breakpoint_threshold_amount=10,
+        )
+        self.fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=500,
+            chunk_overlap=50,
         )
 
         self.current_resume: LoadedDocument | None = None
         self.current_job: LoadedDocument | None = None
-        self.match_list: list[ChunkMatch] | None = None
+        self.edit_list: list[SuggestedEdit] | None = None
         self.original_overall_similarity: float | None = None
 
     def load_resume(self, path: str):
         self.current_resume = LoadedDocument.create_from_path(
-            path, self.semantic_splitter, self.embeddings
+            path, self.semantic_splitter, self.embeddings, self.fallback_splitter
         )
 
     def load_job(self, input_str: str, path: bool = False):
         if path:
             self.current_job = LoadedDocument.create_from_path(
-                input_str, self.semantic_splitter_low, self.embeddings
+                input_str,
+                self.semantic_splitter_low,
+                self.embeddings,
+                self.fallback_splitter,
             )
         else:
             self.current_job = LoadedDocument.create_from_text(
-                input_str, self.semantic_splitter_low, self.embeddings
+                input_str,
+                self.semantic_splitter_low,
+                self.embeddings,
+                self.fallback_splitter,
             )
-
-    def update_resume_chunk(self, chunk_id: str, new_text: str):
-        """Update text, re-vectorize local chunk, update full doc vector, and recalculate similarity."""
-        match = self.get_match_from_uuid(chunk_id)
-        if self.current_resume and match:
-            # Update local chunk text and vector
-            match.resume_chunk.update_text(new_text, self.embeddings)
-
-            # Recalculate local similarity for this chunk match
-            new_similarity = float(
-                cosine_similarity(
-                    [match.job_chunk.vector], [match.resume_chunk.vector]
-                )[0][0]
-            )
-            match.similarity = new_similarity
-            match.status = self._get_status_from_score(new_similarity)
-
-            # Update overall document vector
-            self.current_resume._vectorize_self(self.embeddings)
-
-    def _get_status_from_score(self, score: float) -> str:
-        if score > 0.85:
-            return "MET"
-        elif score > 0.65:
-            return "WEAK MATCH"
-        else:
-            return "MISSING"
 
     def get_resume_chunks(self) -> list[TextChunk]:
         return self.current_resume.chunks if self.current_resume else []
@@ -93,63 +82,76 @@ class ResumeEngine:
         )
         return float(similarity), orig
 
-    def get_matches(self, rerun: bool = False) -> list[ChunkMatch] | None:
-        if not self.current_job or not self.current_resume:
-            # TODO see how to send this to user layer
-            print("Need to have a resume and job offer loaded")
-            return
+    def calculate_document_similarity(self, text1: str, text2: str) -> float:
+        vec1 = self.embeddings.embed_query(text1)
+        vec2 = self.embeddings.embed_query(text2)
+        return float(cosine_similarity([vec1], [vec2])[0][0])
 
-        if self.match_list and not rerun:
-            return self.match_list
+    def generate_edits(self) -> list[SuggestedEdit]:
+        if not self.current_job or not self.current_resume:
+            print("Need to have a resume and job offer loaded")
+            return []
 
         # Capture initial overall similarity
         if self.original_overall_similarity is None:
             score, _ = self.get_overall_similarity()
             self.original_overall_similarity = score
 
-        resume_vecs = [chunk.vector for chunk in self.current_resume.chunks]
-        job_vecs = [chunk.vector for chunk in self.current_job.chunks]
-        similarity_matrix = cosine_similarity(job_vecs, resume_vecs)
+        resume_text = self.current_resume.current_text
+        job_text = self.current_job.current_text
 
-        matches = []
-        for i, job_chunk in enumerate(self.current_job.chunks):
-            scores = similarity_matrix[i]
+        sys_prompt = (
+            "You are an expert resume writer. Your task is to analyze the provided resume and job offer, "
+            "and suggest specific text replacements in the resume to better match the job offer. "
+            "Provide exact string replacements. The 'original_text' must be an exact substring of the resume."
+        )
+        query = f"Resume:\n{resume_text}\n\nJob Offer:\n{job_text}"
 
-            best_match_idx = np.argmax(scores)
-            best_score = scores[best_match_idx]
-            resume_match = self.current_resume.chunks[best_match_idx]
+        structured_model = self.model.with_structured_output(SuggestedEditsList)
+        messages = [("system", sys_prompt), ("human", query)]
+        result = structured_model.invoke(messages)
 
-            match = ChunkMatch(
-                resume_chunk=resume_match,
-                job_chunk=job_chunk,
-                similarity=float(best_score),
-                status=self._get_status_from_score(best_score),
-                original_similarity=float(best_score),
-            )
-            matches.append(match)
+        edits = result.edits
+        baseline_similarity = self.calculate_document_similarity(resume_text, job_text)
 
-        self.match_list = matches
-        return matches
+        for edit in edits:
+            if edit.original_text in resume_text:
+                temp_resume = resume_text.replace(edit.original_text, edit.new_text, 1)
+                projected_sim = self.calculate_document_similarity(
+                    temp_resume, job_text
+                )
+                edit.projected_similarity = projected_sim
+                edit.similarity_delta = projected_sim - baseline_similarity
+            else:
+                edit.status = "invalid"  # Original text not found
 
-    def get_match_from_uuid(self, uuid: str) -> ChunkMatch | None:
-        if not self.match_list:
+        self.edit_list = edits
+        return edits
+
+    def get_edit_from_id(self, edit_id: str) -> SuggestedEdit | None:
+        if not self.edit_list:
             return None
+        for edit in self.edit_list:
+            if edit.id == edit_id:
+                return edit
+        return None
 
-        for match in self.match_list:
-            if match.chunk_id == uuid:
-                found_match = match
-                break
-        else:
-            found_match = None
-        return found_match
+    def apply_edit(self, edit_id: str, custom_new_text: str | None = None) -> bool:
+        edit = self.get_edit_from_id(edit_id)
+        if not edit or not self.current_resume:
+            return False
 
-    def get_match_texts(self, uuid: str) -> tuple[str, str]:
-        """Returns job_text, resume_text as strings"""
-        chunk_match = self.get_match_from_uuid(uuid)
-        if chunk_match:
-            return chunk_match.get_job_text(), chunk_match.get_resume_text()
-        else:
-            return "Error", "Error"
+        new_text = custom_new_text if custom_new_text is not None else edit.new_text
+
+        if edit.original_text in self.current_resume.current_text:
+            self.current_resume.current_text = self.current_resume.current_text.replace(
+                edit.original_text, new_text, 1
+            )
+            edit.status = "accepted"
+            # Update overall vector
+            self.current_resume._vectorize_self(self.embeddings)
+            return True
+        return False
 
     def _call_llm(self, sys_prompt: str, query: str) -> str:
         messages = [
@@ -161,9 +163,12 @@ class ResumeEngine:
         ]
         return self.model.invoke(messages).text
 
-    def reformat_chunk(self, chunk: ChunkMatch):
-        prompt = Config.Prompts.reformat_chunk.format(
-            job_chunk=chunk.get_job_text(), resume_chunk=chunk.get_resume_text()
-        )
+    def format_resume_text(self, text: str, format_type: str) -> str:
+        if format_type.lower() == "markdown":
+            prompt = Config.Prompts.markdown_format_prompt.format(text=text)
+        elif format_type.lower() == "typst":
+            prompt = Config.Prompts.typst_format_prompt.format(text=text)
+        else:
+            return text
 
         return self._call_llm(sys_prompt="", query=prompt)

@@ -14,7 +14,7 @@ from textual.widgets import (
 )
 
 from core.engine import ResumeEngine
-from tui.tui import MatchListItem
+from tui.tui import EditListItem
 
 
 class LoadingScreen(Screen):
@@ -73,6 +73,7 @@ class InputScreen(Screen):
 
         app.resume_eng.load_resume(resume_path)
         app.resume_eng.load_job(job_offer)
+        app.resume_eng.generate_edits()
 
         self.app.call_from_thread(self.show_results)
 
@@ -98,150 +99,174 @@ class ResultsScreen(Screen):
 
         with Horizontal(id="results-container"):
             with VerticalScroll(id="match-list"):
-                if matches := app.resume_eng.get_matches():
-                    for match in matches:
-                        yield MatchListItem(match)
+                if edits := app.resume_eng.edit_list:
+                    for edit in edits:
+                        yield EditListItem(edit)
 
             with VerticalScroll(id="match-detail"):
-                yield Label("Select a match to view details", id="empty-detail-msg")
+                yield Label("Select an edit to view details", id="empty-detail-msg")
 
         yield Button("Finish", id="finish-btn", variant="primary")
 
-    async def on_match_list_item_selected(
-        self, message: MatchListItem.Selected
-    ) -> None:
-        for widget in self.query(MatchListItem).results():
+    async def on_edit_list_item_selected(self, message: EditListItem.Selected) -> None:
+        for widget in self.query(EditListItem).results():
             widget.set_class(widget.id == message.widget.id, "selected")
 
-        selected_match_id = message.chunk_id
-        await self.show_detail(selected_match_id)
+        selected_edit_id = message.edit_id
+        await self.show_detail(selected_edit_id)
 
-    async def show_detail(self, match_id: str) -> None:
+    async def show_detail(self, edit_id: str) -> None:
         app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
         detail_container = self.query_one("#match-detail", VerticalScroll)
 
         await detail_container.query("*").remove()
 
-        match = app.resume_eng.get_match_from_uuid(match_id)
-        if not match:
+        edit = app.resume_eng.get_edit_from_id(edit_id)
+        if not edit:
             return
 
         await detail_container.mount(
-            Label("Job Requirement", classes="detail-section-title"),
+            Label("Reason for Edit", classes="detail-section-title"),
             TextArea(
-                text=match.get_job_text(),
+                text=edit.reason,
                 read_only=True,
                 classes="detail-textarea job-textarea",
             ),
-            Label("Current Resume Chunk", classes="detail-section-title"),
+            Label("Original Text", classes="detail-section-title"),
             TextArea(
-                text=match.get_resume_text(),
+                text=edit.original_text,
                 read_only=True,
                 classes="detail-textarea old-textarea",
             ),
-            Label("Edit Resume Chunk", classes="detail-section-title"),
+            Label("Suggested New Text", classes="detail-section-title"),
             TextArea(
-                text=match.get_resume_text(),
+                text=edit.new_text,
                 id="edit-textarea",
                 classes="detail-textarea new-textarea",
             ),
             Horizontal(
-                Button("Generate New Chunk", id="generate-btn", variant="warning"),
-                Button("Save Changes", id="save-btn", variant="primary"),
-                Button("Cancel", id="cancel-btn", variant="error"),
+                Button("Accept", id="accept-btn", variant="success"),
+                Button("Reject", id="reject-btn", variant="error"),
                 id="detail-buttons",
             ),
         )
-        self.current_match_id = match_id
+        self.current_edit_id = edit_id
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
         if event.button.id == "finish-btn":
-            app.exit()
-        elif event.button.id == "generate-btn":
-            self.generate_new_chunk()
-        elif event.button.id == "save-btn":
+            app.push_screen(FinalizeScreen())
+        elif event.button.id == "accept-btn":
             new_text = self.query_one("#edit-textarea", TextArea).text
-            app.resume_eng.update_resume_chunk(self.current_match_id, new_text)
+            success = app.resume_eng.apply_edit(self.current_edit_id, new_text)
 
-            # Refresh UI
-            # 1. Update the overall score label
-            current_overall, original_overall = app.resume_eng.get_overall_similarity()
-            display_overall = (
-                f"{original_overall:.2%} -> {current_overall:.2%}"
-                if current_overall != original_overall
-                else f"{current_overall:.2%}"
-            )
-            self.query_one("#overall-score-label", Label).update(
-                f"Overall Resume Match: {display_overall}"
-            )
-
-            # 2. Update the MatchListItem in the list
-            try:
-                list_item = self.query_one(
-                    f"#match-{self.current_match_id}", MatchListItem
+            if success:
+                # Refresh UI
+                # 1. Update the overall score label
+                current_overall, original_overall = (
+                    app.resume_eng.get_overall_similarity()
                 )
-                list_item.refresh_match_data()
-            except NoMatches:
-                pass  # Widget might have been unmounted
+                display_overall = (
+                    f"{original_overall:.2%} -> {current_overall:.2%}"
+                    if current_overall != original_overall
+                    else f"{current_overall:.2%}"
+                )
+                self.query_one("#overall-score-label", Label).update(
+                    f"Overall Resume Match: {display_overall}"
+                )
 
-            self.app.notify("Chunk updated successfully!")
-        elif event.button.id == "cancel-btn":
-            match = app.resume_eng.get_match_from_uuid(self.current_match_id)
-            if match:
-                self.query_one(
-                    "#edit-textarea", TextArea
-                ).text = match.get_resume_text()
+                # 2. Update the EditListItem in the list
+                try:
+                    list_item = self.query_one(
+                        f"#edit-{self.current_edit_id}", EditListItem
+                    )
+                    list_item.refresh_edit_data()
+                except NoMatches:
+                    pass  # Widget might have been unmounted
 
-    @work(thread=True)
-    def generate_new_chunk(self) -> None:
-        """Call LLM to reformat the chunk and update the view."""
+                self.app.notify("Edit applied successfully!")
+            else:
+                self.app.notify(
+                    "Failed to apply edit. Original text not found.", severity="error"
+                )
+        elif event.button.id == "reject-btn":
+            edit = app.resume_eng.get_edit_from_id(self.current_edit_id)
+            if edit:
+                edit.status = "rejected"
+                try:
+                    list_item = self.query_one(
+                        f"#edit-{self.current_edit_id}", EditListItem
+                    )
+                    list_item.refresh_edit_data()
+                except NoMatches:
+                    pass
+                self.app.notify("Edit rejected.")
+
+
+class FinalizeScreen(Screen):
+    """Screen for finalizing and exporting the resume."""
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="finalize-container"):
+            with Horizontal(id="format-buttons"):
+                yield Button("Raw", id="btn-raw")
+                yield Button("Markdown", id="btn-markdown")
+                yield Button("Typst", id="btn-typst")
+                yield Button("Export", id="btn-export", variant="success")
+            yield TextArea(id="preview")
+
+    def on_mount(self) -> None:
         app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
-        match_id = self.current_match_id
+        self.raw_text = app.resume_eng.current_resume.get_full_text()
+        self.current_format = "raw"
+        self.query_one("#preview", TextArea).text = self.raw_text
 
-        # Get chunk outside thread for safety
-        match = app.resume_eng.get_match_from_uuid(match_id)
-        if not match:
-            return
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-raw":
+            self.current_format = "raw"
+            self.query_one("#preview", TextArea).text = self.raw_text
+        elif event.button.id == "btn-markdown":
+            self.format_text("markdown")
+        elif event.button.id == "btn-typst":
+            self.format_text("typst")
+        elif event.button.id == "btn-export":
+            self.export_resume()
 
-        # Notify UI we're starting
-        self.app.call_from_thread(self._set_loading_state, True)
-
+    @work(exclusive=True, thread=True)
+    def format_text(self, format_type: str) -> None:
+        app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
+        self.app.call_from_thread(self.app.notify, f"Formatting as {format_type}...")
         try:
-            new_text = app.resume_eng.reformat_chunk(match)
-            # Send result back (verify we are still on that chunk)
-            self.app.call_from_thread(self._finish_gen, match_id, new_text)
+            formatted_text = app.resume_eng.format_resume_text(
+                self.raw_text, format_type
+            )
+            self.app.call_from_thread(self._update_preview, formatted_text, format_type)
         except Exception as e:
             self.app.call_from_thread(
-                self.app.notify, f"Error generating: {str(e)}", severity="error"
+                self.app.notify, f"Error formatting: {str(e)}", severity="error"
             )
-        finally:
-            self.app.call_from_thread(self._set_loading_state, False)
 
-    def _set_loading_state(self, is_loading: bool) -> None:
-        """Helper to show/hide loading indicator and toggle button."""
+    def _update_preview(self, text: str, format_type: str) -> None:
+        self.current_format = format_type
+        self.query_one("#preview", TextArea).text = text
+        self.app.notify(f"Formatted as {format_type} successfully!")
+
+    def export_resume(self) -> None:
+        text = self.query_one("#preview", TextArea).text
+        ext = "txt"
+        if self.current_format == "markdown":
+            ext = "md"
+        elif self.current_format == "typst":
+            ext = "typ"
+
+        filename = f"resume_export.{ext}"
         try:
-            gen_btn = self.query_one("#generate-btn", Button)
-            gen_btn.disabled = is_loading
-
-            if is_loading:
-                if not self.query("#gen-loading"):
-                    self.query_one("#match-detail", VerticalScroll).mount(
-                        LoadingIndicator(id="gen-loading"), before="#detail-buttons"
-                    )
-            else:
-                self.query("#gen-loading").remove()
-        except NoMatches:
-            pass
-
-    def _finish_gen(self, match_id: str, new_text: str) -> None:
-        """Update the TextArea with generated text if match hasn't changed."""
-        if self.current_match_id == match_id:
-            try:
-                self.query_one("#edit-textarea", TextArea).text = new_text
-                self.app.notify("Generation complete!")
-            except NoMatches:
-                pass
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(text)
+            self.app.notify(f"Exported to {filename}")
+        except Exception as e:
+            self.app.notify(f"Error exporting: {str(e)}", severity="error")
 
 
 class ResumeMatcherApp(App):

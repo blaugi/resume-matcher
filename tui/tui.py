@@ -2,61 +2,53 @@ from textual import containers, widgets
 from textual.app import ComposeResult
 from textual.message import Message
 
-from core.models import ChunkMatch
+from core.models import SuggestedEdit
 
 
-class MatchListItem(containers.VerticalGroup):
-    """An entry in the match list."""
+class EditListItem(containers.VerticalGroup):
+    """An entry in the edit list."""
 
     can_focus = True
 
-    def __init__(self, match: ChunkMatch) -> None:
-        self._match = match
-        super().__init__(id=f"match-{match.chunk_id}")
+    def __init__(self, edit: SuggestedEdit) -> None:
+        self._edit = edit
+        super().__init__(id=f"edit-{edit.id}")
 
     def compose(self) -> ComposeResult:
-        match = self._match
-        job_snippet = match.get_job_text()[:60].replace("\n", " ") + "..."
+        edit = self._edit
+        reason_snippet = edit.reason[:60].replace("\n", " ") + "..."
 
         with containers.Horizontal(classes="match-header"):
-            display_score = (
-                f"{match.original_similarity:.2f} -> {match.similarity:.2f}"
-                if match.similarity != match.original_similarity
-                else f"{match.similarity:.2f}"
+            delta_str = (
+                f"+{edit.similarity_delta:.4f}"
+                if edit.similarity_delta > 0
+                else f"{edit.similarity_delta:.4f}"
             )
             yield widgets.Label(
-                f"Score: {display_score}", classes="match-score", id="match-score-label"
+                f"Impact: [{delta_str}]", classes="match-score", id="match-score-label"
             )
             yield widgets.Label(
-                match.status,
-                classes=f"match-status {match.status.lower().replace(' ', '-')}",
+                edit.status.upper(),
+                classes=f"match-status {edit.status.lower().replace(' ', '-')}",
                 id="match-status-label",
             )
 
-        yield widgets.Label(job_snippet, classes="match-snippet")
+        yield widgets.Label(reason_snippet, classes="match-snippet")
 
-    def refresh_match_data(self) -> None:
-        """Update the labels with the latest match data."""
-        display_score = (
-            f"{self._match.original_similarity:.2f} -> {self._match.similarity:.2f}"
-            if self._match.similarity != self._match.original_similarity
-            else f"{self._match.similarity:.2f}"
-        )
-        self.query_one("#match-score-label", widgets.Label).update(
-            f"Score: {display_score}"
-        )
+    def refresh_edit_data(self) -> None:
+        """Update the labels with the latest edit data."""
         status_label = self.query_one("#match-status-label", widgets.Label)
-        status_label.update(self._match.status)
+        status_label.update(self._edit.status.upper())
 
         status_label.set_classes(
-            f"match-status {self._match.status.lower().replace(' ', '-')}"
+            f"match-status {self._edit.status.lower().replace(' ', '-')}"
         )
 
     class Selected(Message):
         def __init__(self, widget_instance, data_payload):
             super().__init__()
             self.widget = widget_instance
-            self.chunk_id = data_payload
+            self.edit_id = data_payload
 
     def on_click(self) -> None:
-        self.post_message(self.Selected(self, self._match.chunk_id))
+        self.post_message(self.Selected(self, self._edit.id))
