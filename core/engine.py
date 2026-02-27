@@ -1,12 +1,10 @@
 from langchain.chat_models import init_chat_model
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
 
 from core.config import Config
-from core.models import LoadedDocument, TextChunk, SuggestedEdit
+from core.models import LoadedDocument, SuggestedEdit
 from pydantic import BaseModel, Field
 
 
@@ -21,20 +19,6 @@ class ResumeEngine:
 
         self.model = init_chat_model(Config.CHAT_MODEL)
         self.embeddings = HuggingFaceEmbeddings(model_name=Config.EMBEDDING_MODEL)
-        self.semantic_splitter = SemanticChunker(
-            self.embeddings,
-            breakpoint_threshold_type="percentile",
-            breakpoint_threshold_amount=50,
-        )
-        self.semantic_splitter_low = SemanticChunker(
-            self.embeddings,
-            breakpoint_threshold_type="percentile",
-            breakpoint_threshold_amount=10,
-        )
-        self.fallback_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=50,
-        )
 
         self.current_resume: LoadedDocument | None = None
         self.current_job: LoadedDocument | None = None
@@ -43,27 +27,20 @@ class ResumeEngine:
 
     def load_resume(self, path: str):
         self.current_resume = LoadedDocument.create_from_path(
-            path, self.semantic_splitter, self.embeddings, self.fallback_splitter
+            path, self.embeddings
         )
 
     def load_job(self, input_str: str, path: bool = False):
         if path:
             self.current_job = LoadedDocument.create_from_path(
                 input_str,
-                self.semantic_splitter_low,
                 self.embeddings,
-                self.fallback_splitter,
             )
         else:
             self.current_job = LoadedDocument.create_from_text(
                 input_str,
-                self.semantic_splitter_low,
                 self.embeddings,
-                self.fallback_splitter,
             )
-
-    def get_resume_chunks(self) -> list[TextChunk]:
-        return self.current_resume.chunks if self.current_resume else []
 
     def get_overall_similarity(self) -> tuple[float, float]:
         """Returns (current_similarity, original_similarity)"""
@@ -100,16 +77,12 @@ class ResumeEngine:
         resume_text = self.current_resume.current_text
         job_text = self.current_job.current_text
 
-        sys_prompt = (
-            "You are an expert resume writer. Your task is to analyze the provided resume and job offer, "
-            "and suggest specific text replacements in the resume to better match the job offer. "
-            "Provide exact string replacements. The 'original_text' must be an exact substring of the resume."
+        prompt = Config.Prompts.generate_edits_prompt.format(
+            resume_text=resume_text, job_text=job_text
         )
-        query = f"Resume:\n{resume_text}\n\nJob Offer:\n{job_text}"
 
         structured_model = self.model.with_structured_output(SuggestedEditsList)
-        messages = [("system", sys_prompt), ("human", query)]
-        result = structured_model.invoke(messages)
+        result = structured_model.invoke(prompt)
 
         edits = result.edits
         baseline_similarity = self.calculate_document_similarity(resume_text, job_text)

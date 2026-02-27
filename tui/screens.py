@@ -49,7 +49,7 @@ class InputScreen(Screen):
                 yield Label("Job Description", classes="input-label")
                 yield TextArea(id="job-text")
 
-        yield Button("Find Matches", id="process-btn")
+        yield Button("Analyze", id="process-btn")
 
     def on_directory_tree_file_selected(
         self, event: DirectoryTree.FileSelected

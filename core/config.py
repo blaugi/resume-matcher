@@ -7,22 +7,14 @@ class Config:
     EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
 
     class Prompts:
-        reformat_chunk = """You are an expert resume writer. Your task is to rewrite a specific chunk of a resume to better align with a given job requirement, while remaining truthful to the original experience.
+        generate_edits_prompt = """You are an expert resume writer. Your task is to analyze the provided resume and job offer, and suggest specific text replacements in the resume to better match the job offer.
+Provide exact string replacements. The 'original_text' must be an exact substring of the resume.
 
-Job Requirement:
-{job_chunk}
+Resume:
+{resume_text}
 
-Original Resume Chunk:
-{resume_chunk}
-
-Rewrite the resume chunk to highlight the skills and experiences that match the job requirement. Use strong action verbs and professional language. Do not invent new experiences. Return ONLY the rewritten resume chunk text."""
-
-        extract_keywords = """You are an expert technical recruiter. Extract the most important keywords, skills, and technologies from the following job description chunk.
-
-Job Description Chunk:
-{job_chunk}
-
-Return the keywords as a comma-separated list."""
+Job Offer:
+{job_text}"""
 
         markdown_format_prompt = """You are an expert document formatter. Your task is to format the provided resume text into Markdown.
 Do not change the core content, only apply Markdown formatting (headings, bullet points, bold text, etc.) to make it look professional.
