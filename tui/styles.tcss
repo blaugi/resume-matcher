@@ -100,7 +100,7 @@ Input:focus, TextArea:focus {
     background: $bg-primary;
 }
 
-EditListItem, KeywordListitem {
+EditListItem, KeywordListItem {
     padding: 1;
     height: auto;
     border-left: thick transparent;

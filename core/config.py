@@ -13,11 +13,11 @@ INSTRUCTIONS:
 1. Analyze the Job Offer to identify core technical skills, soft skills, required experience, and key phrasing.
 2. Evaluate the Resume to find areas where the candidate's experience aligns with the job offer but is poorly phrased, lacks impact, or misses key terminology.
 3. Suggest precise text replacements to elevate the resume. Focus on:
-   - Quantifying achievements (using metrics where possible or adding placeholders like '[Insert %]').
+   - Quantifying achievements (using metrics where possible or adding placeholders like '[Insert %]' or '[Insert how many ...]).
    - Incorporating exact keywords from the job description naturally.
    - Replacing weak action verbs with strong, industry-standard verbs.
    - Highlighting transferable skills if direct experience is missing.
-4. Extract keywords from the job offer and categorize them as present or missing in the resume. For missing keywords that fit the candidate's context, suggest text replacements to include them.
+4. Extract keywords from the job offer and categorize them as present or missing in the resume. For missing keywords that fit the candidate's context, suggest text replacements to include them as edits.
 
 CRITICAL CONSTRAINTS:
 - DO NOT invent or fabricate experience the candidate does not have.

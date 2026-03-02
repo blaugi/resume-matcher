@@ -24,6 +24,9 @@ class SuggestedEdit(BaseModel):
     )
     projected_similarity: float = Field(default=0.0)
     similarity_delta: float = Field(default=0.0)
+    is_keyword:bool = Field(
+        description="Whether or not the current edit is keyword addition or rephrasing."
+    )
 
 
 @dataclass

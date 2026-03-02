@@ -19,6 +19,7 @@ class SuggestedEditsList(BaseModel):
     )
 
 
+
 class ResumeEngine:
     def __init__(self):
 
@@ -30,6 +31,7 @@ class ResumeEngine:
         self.keywords: tuple[list[str], list[str]] | None = None
         self.edit_list: list[SuggestedEdit] | None = None
         self.original_overall_similarity: float | None = None
+        self.chat_history = []
 
     def load_resume(self, path: str):
         self.current_resume = LoadedDocument.create_from_path(path, self.embeddings)
@@ -88,6 +90,9 @@ class ResumeEngine:
         structured_model = self.model.with_structured_output(SuggestedEditsList)
         result = structured_model.invoke(prompt)
 
+        self.chat_history.append(("human", prompt))
+        self.chat_history.append(("ai", result.model_dump_json()))
+
         self.keywords = result.present_keywords.split(","), result.missing_keywords.split(",")
         
         edits = result.edits
@@ -139,7 +144,16 @@ class ResumeEngine:
             ),
             ("human", query),
         ]
-        return self.model.invoke(messages).text
+        return self.model.invoke(messages).content
+
+    def follow_up_chat(self, user_message: str) -> str:
+        """Answers follow-up questions using the context from generate_edits"""
+        self.chat_history.append(("human", user_message))
+        
+        response = self.model.invoke(self.chat_history)
+        
+        self.chat_history.append(("ai", response.content))
+        return response.content
 
     def format_resume_text(self, text: str, format_type: str) -> str:
         if format_type.lower() == "markdown":

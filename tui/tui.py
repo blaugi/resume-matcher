@@ -34,6 +34,11 @@ class EditListItem(containers.VerticalGroup):
             yield widgets.Label(
                 f"Impact: [{delta_str}]", classes="match-score", id="match-score-label"
             )
+            if edit.is_keyword:  # TODO style this better (add custom css for it)
+                yield  widgets.Label(
+                "Keyword ", classes="match-status", id="match-keyword"
+            )
+
             yield widgets.Label(
                 edit.status.upper(),
                 classes=f"match-status {edit.status.lower().replace(' ', '-')}",
