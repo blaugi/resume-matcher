@@ -2,7 +2,7 @@ from textual import containers, widgets
 from textual.app import ComposeResult
 from textual.message import Message
 
-from core.models import SuggestedEdit
+from core.models import ModelQuestions, SuggestedEdit
 
 
 class ItemSelected(Message):
@@ -65,9 +65,7 @@ class KeywordListItem(containers.VerticalGroup):
     """An entry in the edit list."""
     can_focus = True
 
-    def __init__(self, keywords: tuple[list[str], list[str]]) -> None:
-        self._present_keywords= keywords[0] 
-        self._missing_keywords= keywords[1] 
+    def __init__(self) -> None:
         super().__init__(id="keyword-list-item")
 
     def compose(self) -> ComposeResult:
@@ -81,4 +79,24 @@ class KeywordListItem(containers.VerticalGroup):
 
     def on_click(self) -> None:
         self.focus()
-        self.post_message(ItemSelected(self, "keyword-list-item"))
+        self.post_message(ItemSelected(self, self.id))
+
+class QuestionsListItem(containers.VerticalGroup):
+    """An entry in the edit list."""
+    can_focus = True
+
+    def __init__(self) -> None:
+        super().__init__(id="question-list-item")
+
+    def compose(self) -> ComposeResult:
+
+        with containers.Horizontal(classes="match-header"):
+            yield widgets.Label(
+                "Questions", classes="match-score", id="match-score-label"
+            )
+        yield widgets.Label("Questions from the model", classes="match-snippet")
+
+
+    def on_click(self) -> None:
+        self.focus()
+        self.post_message(ItemSelected(self,  self.id))

@@ -14,7 +14,7 @@ from textual.widgets import (
 )
 
 from core.engine import ResumeEngine
-from tui.tui import EditListItem, ItemSelected, KeywordListItem
+from tui.tui import EditListItem, ItemSelected, KeywordListItem, QuestionsListItem
 
 
 class LoadingScreen(Screen):
@@ -99,8 +99,10 @@ class ResultsScreen(Screen):
 
         with Horizontal(id="results-container"):
             with VerticalScroll(id="match-list"):
-                if keywords := app.resume_eng.keywords:
-                    yield KeywordListItem(keywords)
+                if app.resume_eng.questions:
+                    yield QuestionsListItem()
+                if app.resume_eng.keywords:
+                    yield KeywordListItem()
                 if edits := app.resume_eng.edit_list:
                     for edit in edits:
                         yield EditListItem(edit)
@@ -111,7 +113,9 @@ class ResultsScreen(Screen):
         yield Button("Finish", id="finish-btn", variant="primary")
 
     async def on_item_selected(self, message: ItemSelected) -> None:
-        for widget in self.query("EditListItem, KeywordListItem").results():
+        for widget in self.query(
+            "EditListItem, KeywordListItem, QuestionsListItem"
+        ).results():
             widget.set_class(widget.id == message.widget.id, "selected")
 
         selected_edit_id = message.item_id
@@ -123,8 +127,54 @@ class ResultsScreen(Screen):
 
         await detail_container.query("*").remove()
 
-        if edit_id != "keyword-list-item":
+        if edit_id == "keyword-list-item":
+            keywords = app.resume_eng.keywords
+            if not keywords:
+                return
+            await detail_container.mount(
+                Label("Present Keywords:", classes="detail-section-title"),
+                TextArea(
+                    text=" ".join(keywords[0]),
+                    read_only=True,
+                    classes="detail-textarea job-textarea",
+                ),
+                Label("Missing Keywords", classes="detail-section-title"),
+                TextArea(
+                    text=" ".join(keywords[1]),
+                    read_only=True,
+                    classes="detail-textarea old-textarea",
+                ),
+            )
+            self.current_edit_id = edit_id
+        if edit_id == "question-list-item":
+            questions = app.resume_eng.questions
+            if not questions:
+                return
+            
+            for i, question in enumerate(questions):
+                await detail_container.mount(
+                    Label(f"Question {i+1}:", classes="detail-section-title"),
+                    TextArea(
+                        text=question.question,
+                        read_only=True,
+                        classes="detail-textarea job-textarea",
+                    ),
+                    Label("Your Answer:", classes="detail-section-title"),
+                    TextArea(
+                        text=question.answer or "",
+                        id=f"answer-{i}",
+                        classes="detail-textarea new-textarea answer-input",
+                    ),
+                )
+            
+            # Add a button to submit all answers at once
+            await detail_container.mount(
+                Button("Submit Answers", id="submit-answers-btn", variant="primary")
+            )
+            self.current_edit_id = edit_id
 
+
+        else:
             edit = app.resume_eng.get_edit_from_id(edit_id)
             if not edit:
                 return
@@ -154,26 +204,6 @@ class ResultsScreen(Screen):
                 ),
             )
             self.current_edit_id = edit_id
-        else:
-            keywords = app.resume_eng.keywords
-            if not keywords:
-                return
-            await detail_container.mount(
-                Label("Present Keywords:", classes="detail-section-title"),
-                TextArea(
-                    text=' '.join(keywords[0]),
-                    read_only=True,
-                    classes="detail-textarea job-textarea",
-                ),
-                Label("Missing Keywords", classes="detail-section-title"),
-                TextArea(
-                    text=' '.join(keywords[1]),
-                    read_only=True,
-                    classes="detail-textarea old-textarea",
-                ),
-            )
-            self.current_edit_id = edit_id
-
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
@@ -241,7 +271,7 @@ class FinalizeScreen(Screen):
 
     def on_mount(self) -> None:
         app: ResumeMatcherApp = self.app  # ty:ignore[invalid-assignment]
-        self.raw_text = app.resume_eng.current_resume.get_full_text()
+        self.raw_text = app.resume_eng.current_resume.get_full_text()  # ty:ignore[unresolved-attribute]
         self.current_format = "raw"
         self.query_one("#preview", TextArea).text = self.raw_text
 

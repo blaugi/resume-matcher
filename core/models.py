@@ -28,6 +28,12 @@ class SuggestedEdit(BaseModel):
         description="Whether or not the current edit is keyword addition or rephrasing."
     )
 
+class ModelQuestions(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    question: str = Field(
+        description="The question you want to ask the user, be sure to contextualize the user."
+    )
+    answer: str = ""
 
 @dataclass
 class LoadedDocument:

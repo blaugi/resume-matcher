@@ -4,10 +4,10 @@ from pydantic import BaseModel, Field
 from sklearn.metrics.pairwise import cosine_similarity
 
 from core.config import Config
-from core.models import LoadedDocument, SuggestedEdit
+from core.models import LoadedDocument, ModelQuestions, SuggestedEdit
 
 
-class SuggestedEditsList(BaseModel):
+class MainExtractionResult(BaseModel):
     edits: list[SuggestedEdit] = Field(
         description="List of suggested edits to the resume."
     )
@@ -18,7 +18,14 @@ class SuggestedEditsList(BaseModel):
         description="Comma separated list of the keywords from the job offer not present in the resume."
     )
 
+    questions: list[ModelQuestions] | None = Field(
+        description="Any questions you need to ask the user before suggesting more edits."
+    )
 
+class SuggestedEditsList(BaseModel):
+    edits: list[SuggestedEdit] = Field(
+        description="List of suggested edits to the resume."
+    )
 
 class ResumeEngine:
     def __init__(self):
@@ -87,13 +94,14 @@ class ResumeEngine:
             resume_text=resume_text, job_text=job_text
         )
 
-        structured_model = self.model.with_structured_output(SuggestedEditsList)
+        structured_model = self.model.with_structured_output(MainExtractionResult)
         result = structured_model.invoke(prompt)
 
         self.chat_history.append(("human", prompt))
         self.chat_history.append(("ai", result.model_dump_json()))
 
         self.keywords = result.present_keywords.split(","), result.missing_keywords.split(",")
+        self.questions:list[ModelQuestions] = result.questions
         
         edits = result.edits
         baseline_similarity = self.calculate_document_similarity(resume_text, job_text)
@@ -146,14 +154,36 @@ class ResumeEngine:
         ]
         return self.model.invoke(messages).content
 
-    def follow_up_chat(self, user_message: str) -> str:
+    def follow_up_chat(self, user_message: str):
         """Answers follow-up questions using the context from generate_edits"""
         self.chat_history.append(("human", user_message))
         
-        response = self.model.invoke(self.chat_history)
-        
+        structured_model = self.model.with_structured_output(SuggestedEditsList) 
+        response = structured_model.invoke(self.chat_history)
+
         self.chat_history.append(("ai", response.content))
-        return response.content
+
+        resume_text = self.current_resume.current_text  # ty:ignore[unresolved-attribute]
+        job_text = self.current_job.current_text  # ty:ignore[unresolved-attribute]
+        baseline_similarity = self.calculate_document_similarity(resume_text, job_text)
+        edits = response.edits
+        for edit in edits:
+            if edit.original_text in resume_text:
+                temp_resume = resume_text.replace(edit.original_text, edit.new_text, 1)
+                projected_sim = self.calculate_document_similarity(
+                    temp_resume, job_text
+                )
+                edit.projected_similarity = projected_sim
+                edit.similarity_delta = projected_sim - baseline_similarity
+            else:
+                edit.status = "invalid"  # Original text not found
+
+        if isinstance(self.edit_list, list):
+            self.edit_list.append(edits)
+        else:
+            self.edit_list = edits
+        return edits
+        
 
     def format_resume_text(self, text: str, format_type: str) -> str:
         if format_type.lower() == "markdown":
